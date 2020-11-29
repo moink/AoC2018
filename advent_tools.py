@@ -799,7 +799,66 @@ def read_all_integers():
     return result
 
 
+class Node:
+    def __init__(self, data):
+        self.data = data
+        self.next = None
+        self.previous = None
+
+    def __str__(self):
+        return str(self.data)
+
+    def __hash__(self):
+        return hash(self.data)
+
+    def __eq__(self, other):
+        return self.data == other.data
+
+
+class CircularLinkedList:
+    def __init__(self):
+        self.head = Node(0)
+        self.head.next = self.head
+        self.head.previous = self.head
+        self.current = self.head
+
+    def get_current(self):
+        return self.current.data
+
+    def add_node_after_current(self, data):
+        new_node = Node(data)
+        new_node.next = self.current.next
+        new_node.previous = self.current
+        self.current.next.previous = new_node
+        self.current.next = new_node
+        self.current = new_node
+
+    def remove_current_node(self):
+        self.current.previous.next = self.current.next
+        self.current.next.previous = self.current.previous
+        self.current = self.current.next
+
+    def move_clockwise(self, steps):
+        for _ in range(steps):
+            self.current = self.current.next
+
+    def move_counterclockwise(self, steps):
+        for _ in range(steps):
+            self.current = self.current.previous
+
+    def __str__(self):
+        result = str(self.head) + ' '
+        place = self.head.next
+        while place != self.head:
+            if place == self.current:
+                result = result + '(' + str(place) + ') '
+            else:
+                result = result + str(place) + ' '
+            place = place.next
+        return result
+
+
 if __name__ == '__main__':
     # start_coding_today()
-    today = 3
+    today = 9
     start_coding(today)
