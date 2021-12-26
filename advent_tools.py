@@ -6,15 +6,29 @@ import copy
 import datetime
 import hashlib
 import itertools
+import math
 import os
 import re
 import shutil
+import sys
 import urllib.request
+import warnings
 
-
-import scipy
+from scipy import signal
 from matplotlib import pyplot as plt
 import numpy as np
+
+REAL_INPUT_FILENAME = 'input.txt'
+TEST_INPUT_FILENAME = 'test_input.txt'
+TESTING = False
+
+
+def input_filename():
+    """Return correct filename depending on testing mode state"""
+    if TESTING:
+        warnings.warn("Test mode active, loading " + TEST_INPUT_FILENAME)
+        return TEST_INPUT_FILENAME
+    return REAL_INPUT_FILENAME
 
 
 def set_up_directory(day):
@@ -36,6 +50,8 @@ def set_up_directory(day):
     template_file_name = os.path.join(this_dir, 'template.py')
     if not(os.path.exists(new_file_name)):
         shutil.copy(template_file_name, new_file_name)
+    test_file_name = os.path.join(new_dir, TEST_INPUT_FILENAME)
+    open(test_file_name, 'a').close()
     return new_dir
 
 
@@ -53,11 +69,11 @@ def download_input_data(day, new_dir):
     """
     with open('session_cookie.txt') as cookie_file:
         session_cookie = cookie_file.read()
-    url = f'https://adventofcode.com/2018/day/{day}/input'
+    url = f'https://adventofcode.com/2021/day/{day}/input'
     opener = urllib.request.build_opener()
     opener.addheaders = [('cookie', 'session=' + session_cookie)]
     urllib.request.install_opener(opener)
-    input_file = os.path.join(new_dir, 'input.txt')
+    input_file = os.path.join(new_dir, REAL_INPUT_FILENAME)
     urllib.request.urlretrieve(url, input_file)
 
 
@@ -88,9 +104,10 @@ def read_input_lines():
         [str]
             Lines in 'input.txt'
     """
-    with open('input.txt') as in_file:
+    with open(input_filename()) as in_file:
         data = in_file.read().strip().splitlines()
     return data
+
 
 def read_input_no_strip():
     """Open today's input data and return it as a list of lines
@@ -99,7 +116,7 @@ def read_input_no_strip():
         [str]
             Lines in 'input.txt'
     """
-    with open('input.txt') as in_file:
+    with open(input_filename()) as in_file:
         data = in_file.read().splitlines()
     return data
 
@@ -111,9 +128,46 @@ def read_whole_input():
         str
             Contents of 'input.txt'
     """
-    with open('input.txt') as in_file:
+    with open(input_filename()) as in_file:
         data = in_file.read().strip()
     return data
+
+
+def read_input_line_groups(sep='\n\n'):
+    """Open today's input data and return groups of lines separated by linebreaks
+
+    Returns:
+        [[str]]
+            Groups of lines of 'input.txt'
+    """
+    contents = read_whole_input()
+    groups = contents.split(sep)
+    return [group.splitlines() for group in groups]
+
+
+def read_all_integers():
+    """Read all the integers on each line of the input file
+
+    Returns:
+        integers: [[int]]
+            All integers on each line of today's input file
+    """
+    result = []
+    for line in read_input_lines():
+        num_strings = re.findall(r'-?[0-9]+', line)
+        nums = [int(num_str) for num_str in num_strings]
+        result.append(nums)
+    return result
+
+
+def read_one_int_per_line():
+    """Read one integer from each line of the file
+
+    Returns:
+        integers: [int]
+            First integer from each line of today's input file
+    """
+    return [row[0] for row in read_all_integers()]
 
 
 def count_times_true(function):
@@ -133,7 +187,7 @@ def count_times_true(function):
     return sum(valid)
 
 
-def dict_from_input_file(sep = ' => ', key='left'):
+def read_dict_from_input_file(sep=' => ', key='left'):
     """Read today's input.txt as a dictionary
 
     Args:
@@ -159,7 +213,7 @@ def dict_from_input_file(sep = ' => ', key='left'):
     return result
 
 
-def dict_of_list_from_file(sep = ' => ', key='left'):
+def read_dict_of_list_from_file(sep=' => ', key='left'):
     """Read today's input.txt as a dictionary of lists
 
         Args:
@@ -173,7 +227,7 @@ def dict_of_list_from_file(sep = ' => ', key='left'):
             result: {str: [str]}
                 Dictionary version of today's input.txt, with the value from
                 each line in the list with that key
-        """
+    """
     result = collections.defaultdict(list)
     lines = read_input_lines()
     for line in lines:
@@ -183,6 +237,23 @@ def dict_of_list_from_file(sep = ' => ', key='left'):
         else:
             result[right.strip()].append(left.strip())
     return dict(result)
+
+
+def read_nparray_from_digits():
+    """Read today's input.txt as a numpy array of digits
+
+    Returns:
+        result: np.ndarray
+            Numpy n-d array version of today's input file, where each digit is
+            considered a separate entry in the array
+    """
+    data = read_input_lines()
+    result = np.zeros((len(data), len(data[0])), dtype=int)
+    for i, line in enumerate(data):
+        for j, char in enumerate(line):
+            result[i, j] = int(char)
+    return result
+
 
 class PlottingGrid:
     """A tool for maintaining and plotting a grid of numbers
@@ -205,21 +276,103 @@ class PlottingGrid:
         """
         self.grid = np.zeros(shape, dtype=int)
 
-    def read_input_file(self, char_map):
-        """Read and store the grid from today's input file
+    @classmethod
+    def from_file(cls, char_map=None, dimension=2, padding=0):
+        """Create a new plotting grid from today's input file
+
+        Alternative constructor
 
         Args:
             char_map: {str: int}
                 Mapping of characters in the file to integers in the numpy
-                array. For example {'.' : 0, '#' : 1} which is typical
+                array. Optional, default {'.' : 0, '#' : 1} which is typical
                 Topaz-notation for a maze with open areas and walls
+            dimension: int
+                Dimension of the resulting grid. Optional, default 2
+            padding: int
+                Padding to apply in each direction in all dimensions to the size of
+                the grid
         Returns:
-
+            None
         """
-        lines = read_input_no_strip()
+        lines = read_input_lines()
+        return cls.from_lines(lines, char_map, dimension, padding)
+
+    @classmethod
+    def from_lines(cls, lines, char_map=None, dimension=2, padding=0):
+        """Create a new plotting grid from a list of lists of strings
+
+        Alternative constructor
+
+        Args:
+            lines: [[str]]
+                Lines that specify the grid. Each line corresponds to one row of the
+                resulting grid
+            char_map: {str: int}
+                Mapping of characters in the file to integers in the numpy
+                array. Optional, default {'.' : 0, '#' : 1} which is typical
+                Topaz-notation for a maze with open areas and walls
+            dimension: int
+                Dimension of the resulting grid. Optional, default 2
+            padding: int
+                Padding to apply in each direction in all dimensions to the size of
+                the grid
+        Returns:
+            None
+        """
+        a, b = cls.get_shape_from_lines(lines)
+        shape = (tuple(2 * padding for _ in range(dimension - 2))
+                 + (a + 2 * padding, b + 2 * padding))
+        new_grid = cls(shape)
+        new_grid.read_lines(lines, char_map, dimension, padding)
+        return new_grid
+
+    @classmethod
+    def get_shape_from_lines(cls, lines):
+        """Determine the shape of the grid from the input file
+
+        Parameters:
+            lines: [[str]]
+                Lines that specify the grid. Each line corresponds to one row of the
+                resulting grid
+
+        Returns:
+            max_y: int
+                Number of lines in the file
+            max_x: int
+                Maximum number of characters in a line of the file
+        """
+        max_y = len(lines)
+        max_x = max(len(line) for line in lines)
+        print(f'Size of grid is ({max_y}, {max_x})')
+        return max_y, max_x
+
+    def read_lines(self, lines, char_map=None, dimension=2, padding=0):
+        """Read and store the grid from a list of lists of strings
+
+        Args:
+            lines: [[str]]
+                Lines that specify the grid. Each line corresponds to one row of the
+                resulting grid
+            char_map: {str: int}
+                Mapping of characters in the file to integers in the numpy
+                array. The default is {'.': 0, '#': 1} which is typical
+                Topaz-notation for a maze with open areas and walls
+            dimension: int
+                Dimension of the resulting grid. Optional, default 2
+            padding: int
+                Padding to apply in each direction in all dimensions to the size of
+                the grid
+        Returns:
+            None
+        """
+        if char_map is None:
+            char_map = {'.': 0, '#': 1}
         for y_pos, line in enumerate(lines):
             for x_pos, char in enumerate(line):
-                self.grid[y_pos, x_pos] = char_map[char]
+                index = (tuple(padding for _ in range(dimension - 2))
+                         + (y_pos + padding, x_pos + padding))
+                self.grid[index] = char_map[char]
 
     def show(self):
         """Show the grid in a new window
@@ -229,9 +382,7 @@ class PlottingGrid:
         Returns:
             None
         """
-        plt.clf()
-        plt.imshow(self.grid)
-        plt.colorbar()
+        self.imshow_grid()
         plt.show()
 
     def draw(self, pause_time=0.01):
@@ -248,11 +399,38 @@ class PlottingGrid:
         Returns:
             None
         """
-        plt.clf()
-        plt.imshow(self.grid)
-        plt.colorbar()
+        self.imshow_grid()
         plt.draw()
         plt.pause(pause_time)
+
+    def imshow_grid(self):
+        """Visualize the current state of the grid"""
+        ax = plt.gca()
+        dimension = len(self.grid.shape)
+        if dimension == 2:
+            ax.imshow(self.grid)
+        elif dimension == 3:
+            self.draw_3d()
+        elif dimension == 4:
+            self.draw_4d()
+        # Do nothing for higher dimensions
+        # plt.colorbar()
+
+    def draw_3d(self):
+        """Draw 2D slices through the 3D grid in subplots"""
+        num_planes = self.grid.shape[0]
+        side = int(math.ceil(math.sqrt(num_planes)))
+        for i in range(num_planes):
+            plt.subplot(side, side, i + 1)
+            plt.imshow(self.grid[i, :, :])
+
+    def draw_4d(self):
+        """Draw 2D slices through the 4D grid in a grid of subplots"""
+        n_rows, n_cols, _, _ = self.grid.shape
+        for i in range(n_rows):
+            for j in range(n_cols):
+                plt.subplot(n_rows, n_cols, j * n_rows + i + 1)
+                plt.imshow(self.grid[i, j, :, :])
 
     def sum(self):
         """Returns the sum of the values in the grid
@@ -284,17 +462,19 @@ class GameOfLife(PlottingGrid):
     from PlottingGrid) to turn the corner lights on initially (they were
     stuck on in the problem description).
     """
-    # This is all eight neighbours
-    convolve_matrix = np.asarray([[1, 1, 1], [1, 0, 1], [1, 1, 1]])
-    # If you wanted just four neighbours, do instead:
-    # convolve_matrix = np.asarray([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
-    walls_treated_as = 0
+    def __init__(self, shape):
+        super().__init__(shape)
+        dimension = len(shape)
+        # This is all neighbours - 8 for 2D, 3**n - 1 for N-D
+        convolve_shape = tuple(3 for _ in range(dimension))
+        self.convolve_matrix = np.ones(convolve_shape)
+        middle_point = tuple(1 for _ in range(dimension))
+        self.convolve_matrix[middle_point] = 0
 
     def count_neighbours(self):
         """Count the number of neighbours each grid point has"""
-        count = scipy.signal.convolve2d(self.grid, self.convolve_matrix,
-                                        mode='same', boundary='fill',
-                                        fillvalue=self.walls_treated_as)
+        count = signal.convolve(self.grid, self.convolve_matrix,
+                                mode='same').round(0).astype(int)
         return count
 
     def one_step(self):
@@ -337,6 +517,7 @@ class GameOfLife(PlottingGrid):
             self.one_step()
         self.show()
 
+
 class StateForGraphs(abc.ABC):
     """A starter for a state class for use in graph traversal
 
@@ -349,7 +530,8 @@ class StateForGraphs(abc.ABC):
 
     The second requirement is to implement possible_next_states,
     which provides the edges of the graphs connected to this node, or state.
-    That's where the real meat of the problem will end up.
+    That's where the real meat of the problem will end up. If you want to use
+    the bfs_min_cost_path function
 
     The third requirement is to implement is_final, which tells the BFS
     search when it has reached the destination node.
@@ -367,6 +549,14 @@ class StateForGraphs(abc.ABC):
         """Return string representation. Used for hashing and comparing equal
         """
         pass
+
+    def __repr__(self):
+        """Return string representation shown in debugging tools
+
+        I find it easiest to debug this, for example when calling AssertEqual on this
+        object, using the string representation.
+        """
+        return str(self)
 
     def __hash__(self):
         return hash(str(self))
@@ -400,7 +590,7 @@ class StateForGraphs(abc.ABC):
             Set of StateForGraphs
                 States reachable from this state in one step
         """
-        return set(copy.deepcopy(self))
+        return {copy.deepcopy(self)}
 
 
 def number_of_bfs_steps(current_state):
@@ -538,6 +728,78 @@ def find_final_state(current_state):
             if new_state not in discovered:
                 discovered[new_state] = num_steps + 1
                 queue.append(new_state)
+
+
+def find_all_final_states(current_state):
+    """Return all discoverable final states with a BFS search
+
+    Args:
+        current_state: StateForGraphs
+            The state at the beginning of the search; the root of the tree.
+
+    Returns:
+        final_state: set of StateForGraphs
+            All states reachable from the current state
+
+    See Also: StateForGraphs
+        to understand the required methods for the states used in the graph.
+        The states must implement __hash__, __eq__, possible_next_states,
+        and is_final
+    """
+    final_states = set()
+    stack = [current_state]
+    discovered = {current_state}
+    while stack:
+        state = stack.pop()
+        new_states = state.possible_next_states()
+        for new_state in new_states:
+            if new_state.is_final():
+                final_states.add(new_state)
+            elif new_state not in discovered:
+                discovered.add(new_state)
+                stack.append(new_state)
+    return final_states
+
+
+def bfs_min_cost_path(current_state):
+    """Return the minimum cost to get to the final state from the current state
+
+    For this function to work, the possible_next_states method of the StateForGraphs
+    must return a set of tuples of next states and the cost of moving from the current
+    state to the next one
+
+    Args:
+        current_state: StateForGraphs
+            The state at the beginning of the search; the root of the tree.
+
+    Returns:
+        final_state: set of StateForGraphs
+            All states reachable from the current state
+
+    See Also: StateForGraphs
+        to understand the required methods for the states used in the graph.
+        The states must implement __hash__, __eq__, possible_next_states,
+        and is_final
+    """
+    final_states = {}
+    queue = collections.deque()
+    discovered = {current_state: 0}
+    queue.append(current_state)
+    while queue:
+        state = queue.popleft()
+        cost = discovered[state]
+        new_states = state.possible_next_states()
+        for new_state, step_cost in new_states:
+            new_cost = min(
+                cost + step_cost,
+                discovered.get(new_state, float("inf"))
+            )
+            if new_state.is_final():
+                final_states[new_state] = new_cost
+            elif new_state not in discovered:
+                queue.append(new_state)
+            discovered[new_state] = new_cost
+    return min(final_states.values())
 
 
 class Computer(abc.ABC):
@@ -733,7 +995,7 @@ def get_inside_outside_brackets(data, start_char, end_char, nested=True):
     inside = []
     in_brackets = False
     count = 0
-    for pos, char in enumerate(data):
+    for char in data:
         if in_brackets:
             if char == end_char:
                 count = count - 1
@@ -741,9 +1003,9 @@ def get_inside_outside_brackets(data, start_char, end_char, nested=True):
                     in_brackets = False
                     outside.append('')
                 else:
-                    inside[-1] = inside[-1] + (char)
+                    inside[-1] = inside[-1] + char
             else:
-                inside[-1] = inside[-1] + (char)
+                inside[-1] = inside[-1] + char
                 if char == start_char:
                     count = count + 1
         elif char == start_char:
@@ -754,6 +1016,7 @@ def get_inside_outside_brackets(data, start_char, end_char, nested=True):
             outside[-1] = outside[-1] + char
     outside = [item for item in outside if item]
     return inside, outside
+
 
 def recursive_inside_outside(data, start_char, end_char):
     """Recursively break up nested delimited strings
@@ -784,22 +1047,38 @@ def recursive_inside_outside(data, start_char, end_char):
     return {'outside': outside, 'inside': inside_full}
 
 
-def read_all_integers():
-    """Read all the integers on each line of the input file
+def shift_with_padding(data, shift, axis, pad_value):
+    """Shift a 2d numpy array along some axis, padding with a constant to maintain size
+
+    Args:
+        data: np.array_like
+            Input array
+        shift: int
+            The number of places by which elements are shifted
+        axis: int
+            Axis along which elements are shifted
+        pad_value: scalar
+            Value to which to set the padded values
 
     Returns:
-        integers: [[int]]
-            All integers on each line of today's input file
+        shifted_data: np.ndarray
+            Output array, with the same shape as data
     """
-    result = []
-    for line in read_input_lines():
-        num_strings = re.findall(r'-?[0-9]+', line)
-        nums = [int(num_str) for num_str in num_strings]
-        result.append(nums)
-    return result
+    shifted_data = np.roll(data, shift, axis=axis)
+    null_slice = slice(None, None)
+    if shift < 0:
+        part_slice = slice(shift, None)
+    else:
+        part_slice = slice(None, shift)
+    if axis == 1:
+        full_slice = (null_slice, part_slice)
+    else:
+        full_slice = (part_slice, null_slice)
+    shifted_data[full_slice] = pad_value
+    return shifted_data
 
 
-class Node:
+class LinkedListNode:
     def __init__(self, data):
         self.data = data
         self.next = None
@@ -816,24 +1095,28 @@ class Node:
 
 
 class CircularLinkedList:
-    def __init__(self):
-        self.head = Node(0)
+    def __init__(self, first_node=0):
+        self.head = LinkedListNode(first_node)
         self.head.next = self.head
         self.head.previous = self.head
         self.current = self.head
+        self.node_locs = {first_node: self.head}
 
     def get_current(self):
         return self.current.data
 
     def add_node_after_current(self, data):
-        new_node = Node(data)
+        new_node = LinkedListNode(data)
         new_node.next = self.current.next
         new_node.previous = self.current
         self.current.next.previous = new_node
         self.current.next = new_node
         self.current = new_node
+        self.node_locs[data] = new_node
 
     def remove_current_node(self):
+        if self.current == self.head:
+            self.head = self.current.previous
         self.current.previous.next = self.current.next
         self.current.next.previous = self.current.previous
         self.current = self.current.next
@@ -846,10 +1129,18 @@ class CircularLinkedList:
         for _ in range(steps):
             self.current = self.current.previous
 
+    def set_current_to_data(self, data):
+        self.current = self.node_locs[data]
+
     def __str__(self):
         result = str(self.head) + ' '
         place = self.head.next
+        n = 100
+        count = 0
         while place != self.head:
+            count += 1
+            if count > n:
+                raise RuntimeError('lost head')
             if place == self.current:
                 result = result + '(' + str(place) + ') '
             else:
@@ -860,5 +1151,5 @@ class CircularLinkedList:
 
 if __name__ == '__main__':
     # start_coding_today()
-    today = 12
+    today = 14
     start_coding(today)
