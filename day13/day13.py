@@ -1,19 +1,6 @@
-import contextlib
-import collections
-import copy
-import functools
-import itertools
-import math
-import re
-import statistics
-
-import numpy as np
-import pandas as pd
-from matplotlib import pyplot as plt
-
 import advent_tools
 
-MINE_MARKERS = {
+CART_MARKERS = {
     "v": "|",
     "^": "|",
     ">": "-",
@@ -74,14 +61,14 @@ def run_part_1(curr_map):
 
 def get_underlying_map(start_pos):
     char_map = {char: char for char in r"/\|- +"}
-    char_map.update(MINE_MARKERS)
+    char_map.update(CART_MARKERS)
     map = []
     carts = {}
     for j, line in enumerate(start_pos):
         row = []
         for i, char in enumerate(line):
             row.append(char_map[char])
-            if char in MINE_MARKERS:
+            if char in CART_MARKERS:
                 carts[(i, j)] = (char, 0)
         map.append("".join(row))
     return map, carts
@@ -89,24 +76,30 @@ def get_underlying_map(start_pos):
 
 def take_one_step(underlying_map, old_carts):
     carts = old_carts.copy()
-    for (i, j), (char, int_count) in old_carts.items():
-        delta_i, delta_j = DIRECTION_MAP[char]
-        ii = i + delta_i
-        jj = j + delta_j
-        next_char = underlying_map[jj][ii]
-        if (ii, jj) in carts:
-            return (ii, jj), None
-        del carts[(i, j)]
-        if next_char == "+":
-            fill_char = INTERSECTION_MAP[(char, int_count)]
-            carts[(ii, jj)] = (fill_char, (int_count + 1) % 3)
-        else:
-            carts[(ii, jj)] = CART_STEP_MAP[(char, next_char)], int_count
-    return None, carts
+    crash = None
+    for (i, j), (char, int_count) in sorted(old_carts.items()):
+        if (i, j) in carts:
+            delta_i, delta_j = DIRECTION_MAP[char]
+            ii = i + delta_i
+            jj = j + delta_j
+            next_char = underlying_map[jj][ii]
+            del carts[(i, j)]
+            if (ii, jj) in carts:
+                del carts[(ii, jj)]
+                crash = (ii, jj)
+            elif next_char == "+":
+                fill_char = INTERSECTION_MAP[(char, int_count)]
+                carts[(ii, jj)] = (fill_char, (int_count + 1) % 3)
+            else:
+                carts[(ii, jj)] = CART_STEP_MAP[(char, next_char)], int_count
+    return crash, carts
 
 
-def run_part_2(data):
-    pass
+def run_part_2(curr_map):
+    underlying_map, carts = get_underlying_map(curr_map)
+    while len(carts) > 1:
+        _, carts = take_one_step(underlying_map, carts)
+    return list(carts)[0]
 
 
 if __name__ == '__main__':

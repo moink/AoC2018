@@ -57,7 +57,7 @@ class TestCollisions(unittest.TestCase):
         start_pos = ["|", "|", "v", "|", "^", "|", "|"]
         underlying_map, carts = day13.get_underlying_map(start_pos)
         end_pos = day13.take_one_step(underlying_map, carts)
-        self.assertEqual(((0, 3), None), end_pos)
+        self.assertEqual(((0, 3), {}), end_pos)
 
     def test_horiz_track_step1(self):
         start_pos = ["->---<-"]
@@ -71,7 +71,7 @@ class TestCollisions(unittest.TestCase):
         start_pos = ["-->-<--"]
         underlying_map, carts = day13.get_underlying_map(start_pos)
         end_pos = day13.take_one_step(underlying_map, carts)
-        self.assertEqual(((3, 0), None), end_pos)
+        self.assertEqual(((3, 0), {}), end_pos)
 
 class TestLongerExample(unittest.TestCase):
 
@@ -119,6 +119,19 @@ class TestLongerExample(unittest.TestCase):
         ]
         result = day13.run_part_1(start_pos)
         self.assertEqual((7, 3), result)
+
+    def test_part_2_example(self):
+        start_pos = [
+            r"/>-<\   ",
+            r"|   |   ",
+            r"| /<+-\ ",
+            r"| | | v ",
+            r"\>+</ | ",
+            r"  |   ^ ",
+            r"  \<->/ ",
+        ]
+        result = day13.run_part_2(start_pos)
+        self.assertEqual((6, 4), result)
 
 
 if __name__ == '__main__':
