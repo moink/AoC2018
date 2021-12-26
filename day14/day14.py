@@ -64,8 +64,22 @@ def run_part_1(count):
     return "".join(str(num) for num in result[-10:])
 
 
-def run_part_2(data):
-    pass
+def run_part_2(seq):
+    seq = [int(char) for char in str(seq)]
+    result = [3, 7]
+    first_elf_pos = 0
+    second_elf_pos = 1
+    while result[-len(seq):] != seq:
+        new_recipe = result[first_elf_pos] + result[second_elf_pos]
+        if new_recipe >= 10:
+            result.append(new_recipe // 10)
+            if result[-len(seq):] == seq:
+                break
+        result.append(new_recipe % 10)
+        first_elf_pos = (first_elf_pos + 1 + result[first_elf_pos]) % len(result)
+        second_elf_pos = (second_elf_pos + 1 + result[second_elf_pos]) % len(result)
+    return len(result) - len(seq)
+
 
 
 if __name__ == '__main__':
