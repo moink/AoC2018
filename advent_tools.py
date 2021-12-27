@@ -69,7 +69,7 @@ def download_input_data(day, new_dir):
     """
     with open('session_cookie.txt') as cookie_file:
         session_cookie = cookie_file.read()
-    url = f'https://adventofcode.com/2021/day/{day}/input'
+    url = f'https://adventofcode.com/2018/day/{day}/input'
     opener = urllib.request.build_opener()
     opener.addheaders = [('cookie', 'session=' + session_cookie)]
     urllib.request.install_opener(opener)
@@ -1151,5 +1151,5 @@ class CircularLinkedList:
 
 if __name__ == '__main__':
     # start_coding_today()
-    today = 14
+    today = 7
     start_coding(today)
