@@ -32,36 +32,66 @@ ENEMIES = {ELF: GOBLIN, GOBLIN: ELF}
 class Unit:
     current_position: tuple
     hit_points: int
+    attack: int
     race: int
     alive: bool
 
 
 def main():
-    # advent_tools.TESTING = True
-    # data = advent_tools.read_all_integers()
-    # data = advent_tools.read_whole_input()
-    # data = advent_tools.read_input_lines()
-    # data = advent_tools.read_input_no_strip()
-    # data = advent_tools.read_dict_from_input_file(sep=' => ', key='left')
-    # data = advent_tools.read_dict_of_list_from_file(sep=' => ', key='left')
-    # data = advent_tools.read_one_int_per_line()
     start_map = advent_tools.PlottingGrid.from_file(CHAR_MAP)
-    units = get_units(start_map)
-    # data = advent_tools.read_input_line_groups()
-    # data = advent_tools.read_nparray_from_digits()
-    # data.show()
-    print('Part 1:', run_part_1(start_map, units))
+    print('Part 1:', run_part_1(copy.deepcopy(start_map)))
     print('Part 2:', run_part_2(start_map))
 
 
-def get_units(data):
+def run_part_1(start_map):
+    units = get_units(start_map)
+    num_elves, outcome = run_fight(start_map, units)
+    return outcome
+
+
+def run_part_2(start_map):
+    lower_bound = 3
+    upper_bound = 100
+    outcome_upper = None
+    while upper_bound - lower_bound > 1:
+        elf_attack = (lower_bound + upper_bound) // 2
+        this_map = copy.deepcopy(start_map)
+        units = get_units(this_map, elf_attack)
+        start_elves = sum(1 for unit in units if unit.race == ELF)
+        num_elves, outcome = run_fight(this_map, units)
+        if num_elves == start_elves:
+            upper_bound = elf_attack
+            outcome_upper = outcome
+        else:
+            lower_bound = elf_attack
+    return outcome_upper
+
+
+def run_fight(start_map, units):
+    num_goblins = sum(1 for unit in units if unit.race == GOBLIN)
+    num_elves = sum(1 for unit in units if unit.race == ELF)
+    count = 0
+    while num_goblins and num_elves:
+        start_map, units = run_one_round(start_map, units)
+        num_goblins = sum(1 for unit in units if unit.race == GOBLIN)
+        num_elves = sum(1 for unit in units if unit.race == ELF)
+        if num_goblins and num_elves:
+            count = count + 1
+    sum_hp = sum(unit.hit_points for unit in units)
+    outcome = sum_hp * count
+    return num_elves, outcome
+
+
+def get_units(data, elf_attack=3):
     units = []
     rows, cols = data.grid.shape
     for j in range(rows):
         for i in range(cols):
             val = data.grid[(j, i)]
-            if val in [GOBLIN, ELF]:
-                units.append(Unit((j, i), 200, val, True))
+            if val == GOBLIN:
+                units.append(Unit((j, i), 200, 3, val, True))
+            elif val == ELF:
+                units.append(Unit((j, i), 200, elf_attack, val, True))
     return units
 
 
@@ -131,11 +161,11 @@ def attack(unit, units, start_map):
         min_hit_points = min(target.hit_points for target in targets)
         viable_targets = [target for target in targets if target.hit_points == min_hit_points]
         target = min(viable_targets, key=attrgetter("current_position"))
-        target.hit_points -= 3
-        unit_race = get_race(unit)
-        target_race = get_race(target)
-        print(f"{unit_race} at {unit.current_position} attacks {target_race}"
-              f" at {target.current_position} leaving {target.hit_points} hit points")
+        target.hit_points -= unit.attack
+        # unit_race = get_race(unit)
+        # target_race = get_race(target)
+        # print(f"{unit_race} at {unit.current_position} attacks {target_race}"
+        #       f" at {target.current_position} leaving {target.hit_points} hit points")
         if target.hit_points <= 0:
             target.alive = False
             start_map.grid[target.current_position] = EMPTY
@@ -158,24 +188,6 @@ def find_targets(unit, units):
     return targets
 
 
-def run_part_1(start_map, units):
-    num_goblins = sum(1 for unit in units if unit.race == GOBLIN)
-    num_elves = sum(1 for unit in units if unit.race == ELF)
-    count = 0
-    start_map.show()
-    while num_goblins and num_elves:
-        print(count)
-        start_map, units = run_one_round(start_map, units)
-        num_goblins = sum(1 for unit in units if unit.race == GOBLIN)
-        num_elves = sum(1 for unit in units if unit.race == ELF)
-        if num_goblins and num_elves:
-            count = count + 1
-    for unit in units:
-        print(unit)
-    sum_hp = sum(unit.hit_points for unit in units)
-    return sum_hp, count, sum_hp * count
-
-
 def run_one_round(start_map, units):
     for unit in sorted(units, key=attrgetter("current_position")):
         if unit.alive:
@@ -192,10 +204,6 @@ def run_one_round(start_map, units):
         # start_map.show()
     units = [unit for unit in units if unit.alive]
     return start_map, units
-
-
-def run_part_2(data):
-    pass
 
 
 if __name__ == '__main__':
