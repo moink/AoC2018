@@ -145,15 +145,17 @@ def read_input_line_groups(sep='\n\n'):
     return [group.splitlines() for group in groups]
 
 
-def read_all_integers():
+def read_all_integers(lines=None):
     """Read all the integers on each line of the input file
 
     Returns:
         integers: [[int]]
             All integers on each line of today's input file
     """
+    if lines is None:
+        lines = read_input_lines()
     result = []
-    for line in read_input_lines():
+    for line in lines:
         num_strings = re.findall(r'-?[0-9]+', line)
         nums = [int(num_str) for num_str in num_strings]
         result.append(nums)
@@ -1151,5 +1153,5 @@ class CircularLinkedList:
 
 if __name__ == '__main__':
     # start_coding_today()
-    today = 15
+    today = 16
     start_coding(today)
