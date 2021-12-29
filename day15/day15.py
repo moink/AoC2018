@@ -1,0 +1,202 @@
+import contextlib
+import collections
+import copy
+import dataclasses
+import functools
+import itertools
+import math
+import re
+import statistics
+from operator import attrgetter
+
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
+
+import advent_tools
+
+ADJACENCIES = [(-1, 0), (0, -1), (0, 1), (1, 0)]
+
+EMPTY = 0
+WALL = 1
+ELF = 2
+GOBLIN = 3
+REACHABLE = 4
+
+CHAR_MAP = {'.': EMPTY, '#': WALL, "E": ELF, "G": GOBLIN}
+
+ENEMIES = {ELF: GOBLIN, GOBLIN: ELF}
+
+
+@dataclasses.dataclass
+class Unit:
+    current_position: tuple
+    hit_points: int
+    race: int
+    alive: bool
+
+
+def main():
+    # advent_tools.TESTING = True
+    # data = advent_tools.read_all_integers()
+    # data = advent_tools.read_whole_input()
+    # data = advent_tools.read_input_lines()
+    # data = advent_tools.read_input_no_strip()
+    # data = advent_tools.read_dict_from_input_file(sep=' => ', key='left')
+    # data = advent_tools.read_dict_of_list_from_file(sep=' => ', key='left')
+    # data = advent_tools.read_one_int_per_line()
+    start_map = advent_tools.PlottingGrid.from_file(CHAR_MAP)
+    units = get_units(start_map)
+    # data = advent_tools.read_input_line_groups()
+    # data = advent_tools.read_nparray_from_digits()
+    # data.show()
+    print('Part 1:', run_part_1(start_map, units))
+    print('Part 2:', run_part_2(start_map))
+
+
+def get_units(data):
+    units = []
+    rows, cols = data.grid.shape
+    for j in range(rows):
+        for i in range(cols):
+            val = data.grid[(j, i)]
+            if val in [GOBLIN, ELF]:
+                units.append(Unit((j, i), 200, val, True))
+    return units
+
+
+def find_in_range(grid, enemy):
+    next_to_enemy = (
+        (np.roll(grid.grid, 1, 0) == enemy) |
+        (np.roll(grid.grid, -1, 0) == enemy) |
+        (np.roll(grid.grid, 1, 1) == enemy) |
+        (np.roll(grid.grid, -1, 1) == enemy)
+    )
+    in_range = next_to_enemy & (grid.grid == EMPTY)
+    result = advent_tools.PlottingGrid(in_range.shape)
+    result.grid = in_range
+    return result
+
+
+def get_next_pos(start_map, in_range, start_pos):
+    queue = collections.deque([start_pos])
+    discovered = {start_pos: 0}
+    destinations = {}
+    parents = collections.defaultdict(set)
+    while queue:
+        current = queue.popleft()
+        if in_range[current]:
+            destinations[current] = discovered[current]
+        else:
+            i, j = current
+            for delta_i, delta_j, in ADJACENCIES:
+                ii = i + delta_i
+                jj = j + delta_j
+                new_node = (ii, jj)
+                if start_map[new_node] == EMPTY:
+                    if new_node not in discovered:
+                        discovered[new_node] = discovered[current] + 1
+                        queue.append(new_node)
+                        parents[new_node].add(current)
+                    else:
+                        discovered[new_node] = min(
+                            discovered[new_node], discovered[current] + 1)
+                        if not parents[new_node]:
+                            parents[new_node].add(current)
+                        else:
+                            min_parent = min(discovered[parent] for parent in parents[new_node])
+                            if discovered[current] == min_parent:
+                                parents[new_node].add(current)
+    if not destinations:
+        return start_pos
+    target = min(dest for dest, dist in destinations.items()
+                 if dist == min(destinations.values()))
+    path = [target]
+    while start_pos not in parents[path[-1]]:
+        parent_dists = {parent: discovered[parent] for parent in (parents[path[-1]])}
+        path.append(min(parent for parent, dist in parent_dists.items()
+                        if dist == min(parent_dists.values())))
+    return path[-1]
+
+
+def get_race(unit):
+    if unit.race == ELF:
+        return "Elf"
+    return "Goblin"
+
+
+def attack(unit, units, start_map):
+    targets = find_targets(unit, units)
+    if targets:
+        min_hit_points = min(target.hit_points for target in targets)
+        viable_targets = [target for target in targets if target.hit_points == min_hit_points]
+        target = min(viable_targets, key=attrgetter("current_position"))
+        target.hit_points -= 3
+        unit_race = get_race(unit)
+        target_race = get_race(target)
+        print(f"{unit_race} at {unit.current_position} attacks {target_race}"
+              f" at {target.current_position} leaving {target.hit_points} hit points")
+        if target.hit_points <= 0:
+            target.alive = False
+            start_map.grid[target.current_position] = EMPTY
+
+
+def find_targets(unit, units):
+    i, j = unit.current_position
+    targets = []
+    for delta_i, delta_j, in ADJACENCIES:
+        ii = i + delta_i
+        jj = j + delta_j
+        for enemy_unit in units:
+            if (
+                enemy_unit.current_position == (ii, jj)
+                and enemy_unit.race == ENEMIES[unit.race]
+                and enemy_unit.alive
+            ):
+                targets.append(enemy_unit)
+                break
+    return targets
+
+
+def run_part_1(start_map, units):
+    num_goblins = sum(1 for unit in units if unit.race == GOBLIN)
+    num_elves = sum(1 for unit in units if unit.race == ELF)
+    count = 0
+    start_map.show()
+    while num_goblins and num_elves:
+        print(count)
+        start_map, units = run_one_round(start_map, units)
+        num_goblins = sum(1 for unit in units if unit.race == GOBLIN)
+        num_elves = sum(1 for unit in units if unit.race == ELF)
+        if num_goblins and num_elves:
+            count = count + 1
+    for unit in units:
+        print(unit)
+    sum_hp = sum(unit.hit_points for unit in units)
+    return sum_hp, count, sum_hp * count
+
+
+def run_one_round(start_map, units):
+    for unit in sorted(units, key=attrgetter("current_position")):
+        if unit.alive:
+            in_range = find_in_range(start_map, ENEMIES[unit.race])
+            targets = find_targets(unit, units)
+            if not targets:
+                next_step = get_next_pos(start_map.grid, in_range.grid, unit.current_position)
+                start_map.grid[unit.current_position] = EMPTY
+                start_map.grid[next_step] = unit.race
+                unit.current_position = next_step
+            targets = find_targets(unit, units)
+            if targets:
+                attack(unit, units, start_map)
+        # start_map.show()
+    units = [unit for unit in units if unit.alive]
+    return start_map, units
+
+
+def run_part_2(data):
+    pass
+
+
+if __name__ == '__main__':
+    main()
