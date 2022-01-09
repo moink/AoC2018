@@ -1,15 +1,8 @@
-import contextlib
-import collections
 import copy
-import functools
-import itertools
-import math
+import cProfile
 import re
-import statistics
 
 import numpy as np
-import pandas as pd
-from matplotlib import pyplot as plt
 
 import advent_tools
 
@@ -20,18 +13,10 @@ WATER = 3
 
 
 def main():
-    # advent_tools.TESTING = True
-    # data = advent_tools.read_all_integers()
-    # data = advent_tools.read_whole_input()
-    # data = advent_tools.read_input_no_strip()
-    # data = advent_tools.read_dict_from_input_file(sep=' => ', key='left')
-    # data = advent_tools.read_dict_of_list_from_file(sep=' => ', key='left')
-    # data = advent_tools.read_one_int_per_line()
-    # data = advent_tools.PlottingGrid.from_file({'.' : 0, '#' : 1})
-    # data = advent_tools.read_input_line_groups()
-    # data = advent_tools.read_nparray_from_digits()
     scan, spring_loc = process_input(advent_tools.read_input_lines())
-    part1, part2 = run_both_parts(scan, spring_loc)
+    with cProfile.Profile() as profiler:
+        part1, part2 = run_both_parts(scan, spring_loc)
+    profiler.dump_stats("day17.prof")
     print('Part 1:', part1)
     print('Part 2:', part2)
 
@@ -91,7 +76,7 @@ def run_both_parts(scan, spring_loc):
         drip_phase(scan)
         spread_phase(scan)
         settle_phase(scan)
-    scan.show()
+    # scan.show()
     part_1 = ((scan.grid == WET_SAND) | (scan.grid == WATER)).sum()
     return part_1, (scan.grid == WATER).sum()
 
@@ -128,15 +113,11 @@ def drip_phase(scan):
     while (scan.grid != old_scan.grid).any():
         old_scan.grid = copy.copy(scan.grid)
         drip_location = (
-                np.pad(scan.grid[:-1] == WET_SAND, ((1, 0), (0, 0)), constant_values=False)
-                & (scan.grid == DRY_SAND)
+            np.pad(scan.grid[:-1] == WET_SAND, ((1, 0), (0, 0)), constant_values=False)
+            & (scan.grid == DRY_SAND)
         )
         if drip_location.any():
             scan.grid[drip_location] = WET_SAND
-
-
-def run_part_2(scan, spring_loc):
-    pass
 
 
 if __name__ == '__main__':
